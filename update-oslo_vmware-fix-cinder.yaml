@@ -1,0 +1,47 @@
+---
+- hosts: controller
+  become: yes
+  become_method: sudo
+  tasks:
+
+    - name: Clone oslo_vmware
+      # command: git clone https://github.com/openstack/oslo.vmware.git /tmp/oslo.vmware
+      git:
+        repo: 'https://github.com/openstack/oslo.vmware.git'
+        dest: /tmp/oslo.vmware
+        version: 2.19.0
+
+    # - name: Build oslo_vmware package
+    #   command: python setup.py build
+    #   args:
+    #     chdir: /tmp/oslo.vmware
+
+    # - name: Backup old oslo_vmware package
+    #   command: mv /usr/lib/python2.7/dist-packages/oslo_vmware /root/oslo_vmware-old
+
+    - name: Copy new oslo_vmware package
+      # copy:
+      #   remote_src: True
+      #   src: /tmp/oslo.vmware/oslo_vmware/wsdl/6.5
+      #   dest: /usr/lib/python2.7/dist-packages/oslo_vmware/wsdl
+      command: cp -R /tmp/oslo.vmware/oslo_vmware/wsdl/6.5 /usr/lib/python2.7/dist-packages/oslo_vmware/wsdl
+
+    - name: Change default cinder zone to VMware
+      replace:
+        dest: /etc/cinder/cinder.conf
+        regexp: "default_availability_zone = nova"
+        replace: "default_availability_zone = vcenter-cinder"
+        backup: yes
+
+    - name: Restart cinder services
+      service:
+        name: "{{ item }}"
+        state: restarted
+      with_items:
+        - cinder-api
+        - cinder-scheduler
+        - cinder-volume
+        - cinder-backup
+
+    - name: Kill cinder-volume-vmware processes
+      command: ps aux | grep -F 'cinder-volume-vmware' | grep -v -F 'grep' | awk '{ print $2 }' |xargs kill -TERM

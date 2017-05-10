@@ -1,0 +1,44 @@
+---
+- hosts: controller
+  become: yes
+  become_method: sudo
+  tasks:
+
+    - name: Install dashboard with pip
+      pip: name={{item}} state=present
+      with_items:
+        - neutron-lbaas-dashboard==1.0.0
+      register: lbaasinstalled
+
+    - name: Copy panel to Horizon start folder
+      when: lbaasinstalled|success
+      copy:
+        remote_src: True
+        src: /usr/local/lib/python2.7/dist-packages/neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py
+        dest: /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+      register: panelenabled
+      #command: cp /usr/local/lib/python2.7/dist-packages/neutron_lbaas_dashboard/enabled/_1481_project_ng_loadbalancersv2_panel.py /usr/share/openstack-dashboard/openstack_dashboard/local/enabled/
+
+    - name: Enable lbaas panel on Horizon
+      when: panelenabled|success
+      replace:
+        dest: /etc/openstack-dashboard/local_settings.py
+        regexp: "'enable_lb': False,"
+        replace: "'enable_lb': True,"
+        backup: yes
+      notify:
+      - Collect static files
+      - Compress assets
+      - Restart apache service
+
+  handlers:
+    - name: Collect static files
+      command: python /usr/share/openstack-dashboard/manage.py collectstatic --noinput
+
+    - name: Compress assets
+      command: python /usr/share/openstack-dashboard/manage.py compress
+
+    - name: Restart apache service
+      service:
+        name: apache2
+        state: restarted
